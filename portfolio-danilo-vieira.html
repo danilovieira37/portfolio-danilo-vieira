@@ -281,7 +281,7 @@ body.published .edit-only{display:none!important}
 .btn-publish.danger{background:#dc2626}
 .btn-publish.danger:hover{background:#b91c1c}
 .btn-edit-mode{display:none;align-items:center;gap:.5rem;background:var(--green);color:#fff;border:none;border-radius:50px;padding:.65rem 1.25rem;font-size:.82rem;font-weight:600;cursor:pointer;font-family:var(--sans);box-shadow:0 4px 20px rgba(37,99,235,.3);transition:background var(--transition)}
-body.published .btn-edit-mode{display:inline-flex}
+body.published .btn-edit-mode{display:none}
 body.published .btn-publish{display:none}
 .mode-badge{position:fixed;top:5rem;right:1rem;z-index:200;display:none;align-items:center;gap:.4rem;background:rgba(220,38,38,.1);border:1px solid rgba(220,38,38,.25);color:#dc2626;font-size:.72rem;font-weight:600;padding:.35rem .85rem;border-radius:50px;letter-spacing:.3px}
 .mode-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:#dc2626;animation:pulse-dot 2s ease infinite}
@@ -327,7 +327,7 @@ body.published .edit-badge{display:none}
 <canvas id="hero-canvas"></canvas>
 <nav id="nav">
   <div class="nav-inner">
-    <a class="logo" href="#hero">Danilo <span>Vieira</span></a>
+    <a class="logo" href="#hero" id="logoBtn" onclick="handleLogoClick(event)">Danilo <span>Vieira</span></a>
     <ul class="nav-links" id="navLinks">
       <li><a href="#about">Sobre</a></li>
       <li><a href="#experience">Experiência</a></li>
@@ -1501,13 +1501,31 @@ function saveCase(){
   init();draw()
 })()
 
+
+// ── ACESSO MODO EDIÇÃO VIA LOGO (3 cliques rápidos) ──
+let logoClicks=0, logoTimer=null
+function handleLogoClick(e){
+  // em modo edição o logo funciona normalmente
+  if(document.body.classList.contains('published')){
+    e.preventDefault()
+    logoClicks++
+    clearTimeout(logoTimer)
+    logoTimer=setTimeout(()=>{ logoClicks=0 }, 600)
+    if(logoClicks>=3){
+      logoClicks=0
+      openUnlockModal()
+    }
+  }
+}
+
 // ── MODO PUBLICADO ──
 const PWD_KEY='dv_portfolio_pwd'
 const PUB_KEY='dv_portfolio_published'
 
 function applyMode(){
-  const published=localStorage.getItem(PUB_KEY)==='1'
-  document.body.classList.toggle('published', published)
+  // padrão é PUBLICADO — só entra em edição se explicitamente definido como '0'
+  const editMode=localStorage.getItem(PUB_KEY)==='0'
+  document.body.classList.toggle('published', !editMode)
 }
 
 function openPublishFlow(){
