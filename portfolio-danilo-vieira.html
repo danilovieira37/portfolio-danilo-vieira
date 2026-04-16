@@ -529,19 +529,19 @@ body.published .edit-badge{display:none}
       </div>
       <button class="btn-add-case edit-only" onclick="openModal()">+ Novo case</button>
     </div>
-    <div id="apikey-banner" class="apikey-banner">
+    <div id="apikey-banner" class="apikey-banner edit-only">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       <span>Configure sua <a onclick="openApiKeyModal()">API key da Anthropic</a> para usar o gerador de storytelling.</span>
     </div>
-    <div id="apikey-ok-banner" class="apikey-banner" style="background:#F0FDF4;border-color:#BBF7D0;color:#166534;display:none">
+    <div id="apikey-ok-banner" class="apikey-banner edit-only" style="background:#F0FDF4;border-color:#BBF7D0;color:#166534;display:none">
       <div class="apikey-dot"></div>
       <span>API key configurada. Storytelling por IA ativo. <a onclick="openApiKeyModal()">Alterar</a></span>
     </div>
-    <div id="gemini-banner" class="apikey-banner" style="margin-top:.5rem">
+    <div id="gemini-banner" class="apikey-banner edit-only" style="margin-top:.5rem">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       <span>Configure sua <a onclick="openGeminiModal()">API key do Nano Banana (Google AI)</a> para gerar imagens nos cases.</span>
     </div>
-    <div id="gemini-ok-banner" class="apikey-banner" style="background:#F0FDF4;border-color:#BBF7D0;color:#166534;margin-top:.5rem;display:none">
+    <div id="gemini-ok-banner" class="apikey-banner edit-only" style="background:#F0FDF4;border-color:#BBF7D0;color:#166534;margin-top:.5rem;display:none">
       <div class="apikey-dot"></div>
       <span>Nano Banana configurado. Imagens geradas por IA. <a onclick="openGeminiModal()">Alterar</a></span>
     </div>
@@ -952,10 +952,19 @@ function openCaseView(i,ev){
         const seed=i*100+idx
         const imgId=`simg-${i}-${idx}`
         // usar imagem salva se existir
-        const savedImg=c.storyImages&&c.storyImages[imgId]
+        const savedImgRaw=c.storyImages&&c.storyImages[imgId]
+        const savedImg=savedImgRaw&&savedImgRaw!=='__failed__'?savedImgRaw:null
         if(savedImg){
           storyHtml+=`<div class="story-img-wrap" id="${imgId}">
             <img src="${savedImg}" alt="Ilustração — ${c.title}" style="width:100%;height:100%;object-fit:cover" /></div>`
+        } else if(savedImgRaw==='__failed__'){
+          // falhou antes — mostra Unsplash estático sem tentar gerar de novo
+          storyHtml+=`<div class="story-img-wrap" id="${imgId}">
+            <img src="${unsplashUrl(kw,seed)}"
+              alt="Ilustração — ${c.title}"
+              onload="this.parentElement.classList.remove('loading')"
+              onerror="this.src=placeholderSvg('Ilustração')"
+            /></div>`
         } else {
           storyHtml+=`<div class="story-img-wrap loading" id="${imgId}">
             <img src="${unsplashUrl(kw,seed)}"
@@ -980,11 +989,21 @@ function openCaseView(i,ev){
       const part1=c.story.substring(0,breakPt)
       const part2=c.story.substring(breakPt+1)
       const imgId=`simg-${i}-mid`
-      const savedMid=c.storyImages&&c.storyImages[imgId]
+      const savedMidRaw=c.storyImages&&c.storyImages[imgId]
+      const savedMid=savedMidRaw&&savedMidRaw!=='__failed__'?savedMidRaw:null
       if(savedMid){
         storyHtml=`<p class="story-para">${part1}</p>
           <div class="story-img-wrap" id="${imgId}">
             <img src="${savedMid}" alt="Ilustração salva" style="width:100%;height:100%;object-fit:cover" /></div>
+          <p class="story-para">${part2}</p>`
+      } else if(savedMidRaw==='__failed__'){
+        storyHtml=`<p class="story-para">${part1}</p>
+          <div class="story-img-wrap" id="${imgId}">
+            <img src="${unsplashUrl(kw,i*10)}"
+              alt="Ilustração — ${c.title}"
+              onload="this.parentElement.classList.remove('loading')"
+              onerror="this.src=placeholderSvg('Ilustração')"
+            /></div>
           <p class="story-para">${part2}</p>`
       } else {
         storyHtml=`<p class="story-para">${part1}</p>
@@ -1031,8 +1050,12 @@ function openCaseView(i,ev){
             localStorage.setItem('dv_portfolio_cases',JSON.stringify(cases))
             console.log('[Nano Banana] Imagem salva:', imgId)
           }catch(e){
-            console.error('[Nano Banana] Erro ao gerar imagem:', e.message, '| modelo testado')
+            console.error('[Nano Banana] Erro ao gerar imagem:', e.message)
             wrap.classList.remove('loading')
+            // marcar como "tentado" para não regenerar toda vez — usa placeholder SVG
+            if(!cases[caseIndex].storyImages) cases[caseIndex].storyImages={}
+            cases[caseIndex].storyImages[imgId]='__failed__'
+            localStorage.setItem('dv_portfolio_cases',JSON.stringify(cases))
           }
         }, delay)
       })
@@ -1071,8 +1094,11 @@ async function generateCardImage(i,e){
     renderCases()
     console.log('[Nano Banana] Imagem do card gerada e salva para case',i)
   }catch(err){
-    console.error('[Nano Banana] Erro ao gerar imagem do card:',err.message)
-    if(btn){ btn.textContent='Erro — tentar de novo'; btn.disabled=false }
+    console.error('[Nano Banana] Erro imagem card:', err.message)
+    if(btn){ 
+      btn.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg> Tentar de novo'
+      btn.disabled=false 
+    }
   }
 }
 
@@ -1114,8 +1140,8 @@ document.getElementById('geminiModal').addEventListener('click',function(e){if(e
 async function generateCaseImage(prompt, apiKey){
   // tenta os modelos em ordem — fallback automático se um falhar
   const models=[
-    'gemini-2.5-flash-image',
     'gemini-3.1-flash-image-preview',
+    'gemini-2.5-flash-image',
     'nano-banana-pro-preview'
   ]
   let lastErr=null
