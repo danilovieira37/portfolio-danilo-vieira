@@ -135,6 +135,9 @@ section{padding:6rem 2rem;position:relative;z-index:1}
 .case-card-impact{display:inline-flex;align-items:center;gap:.4rem;background:var(--green-l);color:var(--green-d);font-size:.78rem;font-weight:600;padding:.3rem .8rem;border-radius:50px;margin-bottom:.85rem}
 .case-card-story{font-size:.85rem;color:var(--ink-3);line-height:1.75;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .case-card-footer{display:flex;justify-content:space-between;align-items:center;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)}
+.case-img-btn{background:none;border:1px dashed var(--border);border-radius:50px;padding:.35rem .85rem;font-size:.75rem;color:var(--ink-4);cursor:pointer;font-family:var(--sans);transition:all var(--transition);display:flex;align-items:center;gap:.4rem}
+.case-img-btn:hover{border-color:var(--green);color:var(--green)}
+.case-img-generating{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(245,244,240,.85);font-size:.8rem;color:var(--ink-3);border-radius:var(--r-lg)}
 .case-gen-btn{background:none;border:1px solid var(--border);border-radius:50px;padding:.4rem .9rem;font-size:.78rem;color:var(--ink-3);cursor:pointer;font-family:var(--sans);transition:border-color var(--transition),color var(--transition)}
 .case-gen-btn:hover{border-color:var(--green);color:var(--green)}
 .case-edit-btn{background:none;border:none;color:var(--ink-4);cursor:pointer;font-family:var(--sans);font-size:.78rem;padding:.4rem}
@@ -878,7 +881,13 @@ function renderCases(){
         </div>
         <div class="case-card-footer">
           <button class="case-gen-btn edit-only" onclick="generateStory(${i},event)">✦ Gerar storytelling</button>
-          <button class="case-edit-btn edit-only" onclick="openEditModal(${i},event)">Editar</button>
+          <div style="display:flex;gap:.4rem;align-items:center">
+            <button class="case-img-btn edit-only" id="imgbtn-${i}" onclick="generateCardImage(${i},event)" title="Gerar imagem com IA">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              ${c.image?'Nova imagem':'Gerar imagem'}
+            </button>
+            <button class="case-edit-btn edit-only" onclick="openEditModal(${i},event)">Editar</button>
+          </div>
         </div>
       </div>`
     grid.appendChild(div)
@@ -942,16 +951,23 @@ function openCaseView(i,ev){
         const kw=storyKeywords(para, c.company, c.title)
         const seed=i*100+idx
         const imgId=`simg-${i}-${idx}`
-        storyHtml+=`<div class="story-img-wrap loading" id="${imgId}">
+        // usar imagem salva se existir
+        const savedImg=c.storyImages&&c.storyImages[imgId]
+        if(savedImg){
+          storyHtml+=`<div class="story-img-wrap" id="${imgId}">
+            <img src="${savedImg}" alt="Ilustração — ${c.title}" style="width:100%;height:100%;object-fit:cover" /></div>`
+        } else {
+          storyHtml+=`<div class="story-img-wrap loading" id="${imgId}">
             <img src="${unsplashUrl(kw,seed)}"
               alt="Ilustração — ${c.title}"
               onload="this.parentElement.classList.remove('loading')"
               onerror="this.src=placeholderSvg('Imagem carregando...')"
             /></div>`
-        const gemKey=getGeminiKey()
-        if(gemKey){
-          const imgPrompt=`Professional business photo illustrating: ${para.substring(0,120)}. Style: clean, corporate, photorealistic. No text.`
-          pendingImages.push({imgId, imgPrompt, delay: idx*1400})
+          const gemKey=getGeminiKey()
+          if(gemKey){
+            const imgPrompt=`Professional business photo illustrating: ${para.substring(0,120)}. Style: clean, corporate, photorealistic. No text.`
+            pendingImages.push({imgId, imgPrompt, delay: idx*1400})
+          }
         }
       }
     })
@@ -994,6 +1010,10 @@ function openCaseView(i,ev){
             const src=await generateCaseImage(imgPrompt, gemKey)
             wrap.innerHTML=`<img src="${src}" alt="Imagem gerada por IA" style="width:100%;height:100%;object-fit:cover;border-radius:var(--r)" />`
             wrap.classList.remove('loading')
+            // salvar imagem gerada no case para não regenerar
+            if(!cases[i].storyImages) cases[i].storyImages={}
+            cases[i].storyImages[imgId]=src
+            localStorage.setItem('dv_portfolio_cases',JSON.stringify(cases))
           }catch(e){
             console.error('[Nano Banana] Erro ao gerar imagem:', e.message)
             wrap.classList.remove('loading') // mantém Unsplash
@@ -1017,6 +1037,28 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape') closeCaseView()
 })
 
+
+
+// ── GERAR IMAGEM DO CARD COM NANO BANANA ──
+async function generateCardImage(i,e){
+  e.stopPropagation()
+  const gemKey=getGeminiKey()
+  if(!gemKey){ openGeminiModal(); return }
+  const c=cases[i]
+  const btn=document.getElementById('imgbtn-'+i)
+  if(btn){ btn.textContent='Gerando...'; btn.disabled=true }
+  const prompt=`Professional business photograph for a data analytics case study about: ${c.title} at ${c.company}. Context: ${(c.problem||'').substring(0,100)}. Style: clean, corporate, cinematic lighting, photorealistic. No text or overlays.`
+  try{
+    const src=await generateCaseImage(prompt, gemKey)
+    cases[i].image=src
+    localStorage.setItem('dv_portfolio_cases',JSON.stringify(cases))
+    renderCases()
+    console.log('[Nano Banana] Imagem do card gerada e salva para case',i)
+  }catch(err){
+    console.error('[Nano Banana] Erro ao gerar imagem do card:',err.message)
+    if(btn){ btn.textContent='Erro — tentar de novo'; btn.disabled=false }
+  }
+}
 
 // ── NANO BANANA / GEMINI KEY ──
 const GEMINI_KEY_STORAGE='dv_gemini_key'
