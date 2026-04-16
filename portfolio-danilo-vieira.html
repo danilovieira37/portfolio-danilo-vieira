@@ -980,18 +980,26 @@ function openCaseView(i,ev){
       const part1=c.story.substring(0,breakPt)
       const part2=c.story.substring(breakPt+1)
       const imgId=`simg-${i}-mid`
-      storyHtml=`<p class="story-para">${part1}</p>
-        <div class="story-img-wrap loading" id="${imgId}">
-          <img src="${unsplashUrl(kw,i*10)}"
-            alt="Ilustração — ${c.title}"
-            onload="this.parentElement.classList.remove('loading')"
-            onerror="this.src=placeholderSvg('Imagem carregando...')"
-          /></div>
-        <p class="story-para">${part2}</p>`
-      const gemKey=getGeminiKey()
-      if(gemKey){
-        const imgPrompt=`Professional business photo illustrating: ${c.title} at ${c.company}. Style: clean, corporate, photorealistic. No text.`
-        pendingImages.push({imgId, imgPrompt, delay:400})
+      const savedMid=c.storyImages&&c.storyImages[imgId]
+      if(savedMid){
+        storyHtml=`<p class="story-para">${part1}</p>
+          <div class="story-img-wrap" id="${imgId}">
+            <img src="${savedMid}" alt="Ilustração salva" style="width:100%;height:100%;object-fit:cover" /></div>
+          <p class="story-para">${part2}</p>`
+      } else {
+        storyHtml=`<p class="story-para">${part1}</p>
+          <div class="story-img-wrap loading" id="${imgId}">
+            <img src="${unsplashUrl(kw,i*10)}"
+              alt="Ilustração — ${c.title}"
+              onload="this.parentElement.classList.remove('loading')"
+              onerror="this.src=placeholderSvg('Imagem carregando...')"
+            /></div>
+          <p class="story-para">${part2}</p>`
+        const gemKey=getGeminiKey()
+        if(gemKey){
+          const imgPrompt=`Professional business photo illustrating: ${c.title} at ${c.company}. Style: clean, corporate, photorealistic. No text.`
+          pendingImages.push({imgId, imgPrompt, delay:400})
+        }
       }
     }
 
@@ -1001,22 +1009,30 @@ function openCaseView(i,ev){
     // só agora dispara as gerações de imagem — elementos já existem
     const gemKey=getGeminiKey()
     if(gemKey && pendingImages.length>0){
+      const caseIndex=i  // captura índice no closure para evitar race condition
       pendingImages.forEach(({imgId, imgPrompt, delay})=>{
         setTimeout(async()=>{
           const wrap=document.getElementById(imgId)
           if(!wrap) return
+          // verificar de novo se já foi gerada (pode ter sido gerada em outra aba)
+          if(cases[caseIndex].storyImages && cases[caseIndex].storyImages[imgId]){
+            wrap.innerHTML=`<img src="${cases[caseIndex].storyImages[imgId]}" alt="Imagem salva" style="width:100%;height:100%;object-fit:cover" />`
+            wrap.classList.remove('loading')
+            return
+          }
           wrap.classList.add('loading')
           try{
             const src=await generateCaseImage(imgPrompt, gemKey)
             wrap.innerHTML=`<img src="${src}" alt="Imagem gerada por IA" style="width:100%;height:100%;object-fit:cover;border-radius:var(--r)" />`
             wrap.classList.remove('loading')
-            // salvar imagem gerada no case para não regenerar
-            if(!cases[i].storyImages) cases[i].storyImages={}
-            cases[i].storyImages[imgId]=src
+            // salvar no case com índice capturado
+            if(!cases[caseIndex].storyImages) cases[caseIndex].storyImages={}
+            cases[caseIndex].storyImages[imgId]=src
             localStorage.setItem('dv_portfolio_cases',JSON.stringify(cases))
+            console.log('[Nano Banana] Imagem salva:', imgId)
           }catch(e){
-            console.error('[Nano Banana] Erro ao gerar imagem:', e.message)
-            wrap.classList.remove('loading') // mantém Unsplash
+            console.error('[Nano Banana] Erro ao gerar imagem:', e.message, '| modelo testado')
+            wrap.classList.remove('loading')
           }
         }, delay)
       })
@@ -1098,8 +1114,9 @@ document.getElementById('geminiModal').addEventListener('click',function(e){if(e
 async function generateCaseImage(prompt, apiKey){
   // tenta os modelos em ordem — fallback automático se um falhar
   const models=[
+    'gemini-2.5-flash-image',
     'gemini-3.1-flash-image-preview',
-    'gemini-2.0-flash-exp-image-generation'
+    'nano-banana-pro-preview'
   ]
   let lastErr=null
   for(const model of models){
